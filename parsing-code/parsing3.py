@@ -327,35 +327,41 @@ def match_tense_rule(tags, words):
     Verb_ing = 'Verb_ing'
     Verb_past = 'Verb_past'
     Verb = 'Verb'
+    Verb_past_participle = 'Verb_past_participle'
 
      # PAST TENSE
     if contains_any(was_variants) or contains_any(were_variants):
         for word, tag in zip(words, tags):
             if tag == 'Verb_ing':  # Check for Verb_ing tag
                 return 'past_continuous'
-        return 'simple_past'
+
 
     if contains_any(had_variants):
         for word, tag in zip(words, tags):
             if 'been' in words and tag == 'Verb_ing':  # Check for Verb_ing tag
                 return 'past_perfect_continuous'
-        return 'past_perfect'
+            if tag == 'Verb_past_participle':
+                return 'past_perfect'
 
     if contains_any(did_variants):
-        return 'simple_past'
+        for word, tag in zip(words, tags):
+            if tag == 'Verb' and not contains_any(do_variants) and not contains_any(does_variants):  # Check for Verb_past tag
+                return 'simple_past'
 
     for word, tag in zip(words, tags):
-        if tag == 'Verb_past':  # Check for Verb_past tag
+        if tag == 'Verb_past' and not contains_any(do_variants) and not contains_any(does_variants):  # Check for Verb_past tag
             return 'simple_past'
 
     # FUTURE TENSE
     if contains_any(will_variants) or contains_any(shall_variants):
         if contains_any(have_variants):
-            if 'been' in words:
-                for word, tag in zip(words, tags):
-                    if tag == 'Verb_ing':  # Check for Verb_ing tag
-                        return 'future_perfect_continuous'
-            return 'future_perfect'
+            for word, tag in zip(words, tags):
+                if 'been' in words:
+                        if tag == 'Verb_ing':  # Check for Verb_ing tag
+                            return 'future_perfect_continuous'
+                if tag == 'Verb_past_participle':
+                    return 'future_perfect'
+            
         for word, tag in zip(words, tags):
             if 'be' in words and tag == 'Verb_ing':  # Check for Verb_ing tag
                 return 'future_continuous'
@@ -366,20 +372,21 @@ def match_tense_rule(tags, words):
         for word, tag in zip(words, tags):
             if tag == 'Verb_ing':  # Check for Verb_ing tag
                 return 'present_continuous'
-        return 'simple_present'
 
     if contains_any(do_variants) or contains_any(does_variants):
         return 'simple_present'
 
-    if len(words) >= 2 and words[0].lower() in ['she', 'he', 'it'] and words[1].endswith('s') and words[1] not in ['has', 'does']:
+    if len(words) >= 2 and words[0].lower() in ['she', 'he', 'it'] and words[1].endswith['s', 'es'] and words[1] not in ['has', 'does']:
         return 'simple_present'
 
     if contains_any(has_variants) or contains_any(have_variants):
-        if 'been' in words:
-            for word, tag in zip(words, tags):
-                if tag == 'Verb_ing':  # Check for Verb_ing tag
-                    return 'present_perfect_continuous'
-        return 'present_perfect'
+        for word, tag in zip(words, tags):
+            if 'been' in words:
+                    if tag == 'Verb_ing':  # Check for Verb_ing tag
+                        return 'present_perfect_continuous'
+                    
+            if tag == 'Verb_past_participle':
+                return 'present_perfect'
 
     return 'unknown'
 
