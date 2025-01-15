@@ -13,6 +13,7 @@ def load_data_from_csv(file_path):
         for _, group in df.groupby('sentence_id'):
             words = list(group['word'])
             tags = list(group['tag'])
+            # Check consistency between words and tags
             if len(words) != len(tags):
                 raise ValueError(f"Inconsistent word-tag pairs in sentence_id {_}")
             sentence = list(zip(words, tags))
@@ -20,6 +21,7 @@ def load_data_from_csv(file_path):
     except Exception as e:
         raise ValueError(f"Error loading CSV file: {e}")
     return data
+
 
 def word2features(sentence, i):
     """Extract features for a given word in a sentence."""
@@ -31,8 +33,8 @@ def word2features(sentence, i):
         'word.isupper()': word.isupper(),
         'word.istitle()': word.istitle(),
         'word.isdigit()': word.isdigit(),
-        'BOS': i == 0,
-        'EOS': i == len(sentence) - 1,
+        'BOS': i == 0,  # Beginning of sentence
+        'EOS': i == len(sentence) - 1,  # End of sentence
     }
     if i > 0:
         prev_word = sentence[i - 1][0]
@@ -58,14 +60,16 @@ def word2features(sentence, i):
 
 def sent2features(sentence):
     """Convert a sentence into a list of feature dictionaries."""
-    return [word2features(sentence, i) for i in range(len(sentence))]
+    features = [word2features(sentence, i) for i in range(len(sentence))]
+    return features
 
 def sent2labels(sentence):
     """Extract labels (tags) from a sentence."""
-    return [label for _, label in sentence]
+    labels = [label for _, label in sentence]
+    return labels
 
 def detect_sentence_type(sentence):
-    """Detect sentence type based on punctuation or structure."""
+    """Deteksi jenis kalimat berdasarkan tanda baca atau struktur."""
     sentence = sentence.strip()
     if sentence.endswith("?"):
         return "interrogative"
@@ -74,20 +78,141 @@ def detect_sentence_type(sentence):
     else:
         return "declarative"
 
-def handle_negation(words, tags):
-    """Handle negation phrases like 'doesn't' and 'don't'."""
-    corrected_tags = []
-    for i, (word, tag) in enumerate(zip(words, tags)):
-        if word.lower() in ["doesn't", "don't", "didn't"]:
-            corrected_tags.append('Auxiliary_verb')
-            corrected_tags.append('Negation')  # Add separate tag for 'not'
+def extract_subject_predicate_object(tags, words):
+    """Extract subject, predicate, and object with support for interrogative sentences."""
+    subject, predicate, obj = [], [], []
+    
+    # Initialize other elements
+    auxiliary_verbs = []
+    adverbs = []
+    determiners = []
+    adjectives = []
+    possessive_adjectives = []
+    possessive_pronouns = []
+    conjunctions = []
+    prepositions = []
+    
+    # Detect if it's a question
+    is_question = words[-1].endswith('?') or words[0].lower() in ['what', 'where', 'when', 'who', 'why', 'how', 'do', 'does', 'did', 'is', 'are', 'was', 'were']
+    
+    # Find all verb positions
+    verb_indices = [i for i, tag in enumerate(tags) if tag in ['Verb', 'Verb_past', 'Verb_ing', 'verb_past_participle']]
+    aux_indices = [i for i, tag in enumerate(tags) if tag == 'Auxiliary_verb']
+    
+    if not verb_indices and not aux_indices:
+        return {
+            "subject": [],
+            "predicate": [],
+            "object": [],
+            "auxiliary_verbs": [],
+            "adverbs": [],
+            "determiners": [],
+            "adjectives": [],
+            "possessive_adjectives": [],
+            "possessive_pronouns": [],
+            "conjunctions": [],
+            "prepositions": []
+        }
+    
+    # Define tags that can be part of subject phrase
+    subject_tags = [
+        'Pronoun_Subject', 
+        'Noun', 
+        'Noun_plural', 
+        'Determiner', 
+        'Adjective', 
+        'Possessive_adjective'
+    ]
+    
+    if is_question:
+        # For questions, look for subject after auxiliary verb or WH-word
+        start_idx = 1  # Skip the first word if it's a question word
+        if aux_indices:
+            start_idx = aux_indices[0] + 1
+            
+        # Extract subject from position after auxiliary/question word
+        i = start_idx
+        while i < len(words):
+            if tags[i] in subject_tags:
+                phrase, last_idx = build_phrase(words, tags, i, subject_tags)
+                if phrase:
+                    subject.append(phrase)
+                    break
+            i += 1
+    else:
+        # Original logic for declarative sentences
+        i = 0
+        verb_pos = min(verb_indices) if verb_indices else min(aux_indices)
+        while i < verb_pos:
+            if tags[i] in subject_tags:
+                phrase, last_idx = build_phrase(words, tags, i, subject_tags)
+                if phrase:
+                    subject.append(phrase)
+                i = last_idx + 1
+            else:
+                i += 1
+    
+    # Extract predicate (verbs and auxiliary verbs)
+    predicate = [words[i] for i in aux_indices] if aux_indices else []
+    if verb_indices:
+        predicate.append(words[verb_indices[0]])
+    
+    # Define object tags
+    object_tags = [
+        'Noun', 
+        'Noun_plural', 
+        'Pronoun_object', 
+        'Determiner', 
+        'Adjective',
+        'Preposition',
+        'Adverb'
+    ]
+    
+    # Extract object (after verb/auxiliary)
+    last_verb_pos = max(verb_indices) if verb_indices else max(aux_indices)
+    i = last_verb_pos + 1
+    while i < len(words):
+        if tags[i] in object_tags:
+            phrase, last_idx = build_phrase(words, tags, i, object_tags)
+            if phrase:
+                obj.append(phrase)
+            i = last_idx + 1
         else:
-            corrected_tags.append(tag)
-    return corrected_tags
+            i += 1
+    
+    # Collect other elements
+    for i, (word, tag) in enumerate(zip(words, tags)):
+        if tag == 'Auxiliary_verb': auxiliary_verbs.append(word)
+        elif tag == 'Adverb': adverbs.append(word)
+        elif tag == 'Determiner': determiners.append(word)
+        elif tag == 'Adjective': adjectives.append(word)
+        elif tag == 'Possessive_adjective': possessive_adjectives.append(word)
+        elif tag == 'Possessive_pronoun': possessive_pronouns.append(word)
+        elif tag == 'Conjunction': conjunctions.append(word)
+        elif tag == 'Preposition': prepositions.append(word)
+    
+    return {
+        "subject": subject,
+        "predicate": predicate,
+        "object": obj,
+        "auxiliary_verbs": auxiliary_verbs,
+        "adverbs": adverbs,
+        "determiners": determiners,
+        "adjectives": adjectives,
+        "possessive_adjectives": possessive_adjectives,
+        "possessive_pronouns": possessive_pronouns,
+        "conjunctions": conjunctions,
+        "prepositions": prepositions
+    }
+
 
 def analyze_sentence(sentence, model):
     """Analyze a given sentence and detect its tense and structure."""
-    words = sentence.rstrip('.?!').split()
+    # Tokenize kalimat
+    words = sentence.rstrip('.').split()
+    print("Words:", words)
+
+    # Tokenize dan prediksi dengan CRF model
     features = []
     for i, word in enumerate(words):
         word_features = {
@@ -100,7 +225,8 @@ def analyze_sentence(sentence, model):
             'BOS': i == 0,
             'EOS': i == len(words) - 1,
         }
-
+        
+        # Tambah fitur kata sebelumnya
         if i > 0:
             prev_word = words[i - 1]
             word_features.update({
@@ -110,7 +236,8 @@ def analyze_sentence(sentence, model):
             })
         else:
             word_features['BOS'] = True
-
+            
+        # Tambah fitur kata setelahnya
         if i < len(words) - 1:
             next_word = words[i + 1]
             word_features.update({
@@ -120,19 +247,35 @@ def analyze_sentence(sentence, model):
             })
         else:
             word_features['EOS'] = True
-
+            
         features.append(word_features)
-
+    
     try:
         tags = model.predict([features])[0]
         print("Predicted tags:", tags)
     except Exception as e:
         raise ValueError(f"Error during prediction: {e}")
 
-    corrected_tags = handle_negation(words, tags)
+    # Koreksi tag prediksi jika diperlukan
+    corrected_tags = []
+    for i, (word, tag) in enumerate(zip(words, tags)):
+        # Cek apakah kata sebelumnya adalah subjek
+        is_after_subject = (i > 0 and corrected_tags[i-1] == 'Pronoun_Subject')
+        
+        if word.lower() in ['is', 'are', 'was', 'were', 'have', 'has', 'am', 'do','does', 'had', 'will', 'been', 'shall', 'be', 'did']:
+            corrected_tags.append('Auxiliary_verb')
+        # Jika kata setelah subjek dan berakhiran 's'
+        elif (is_after_subject and 
+            word.endswith('s') and 
+            not word.lower() in ['is', 'was', 'has']):
+            corrected_tags.append('Verb')
+        else:
+            corrected_tags.append(tag)
 
-    # Tentukan tense berdasarkan aturan
+
+    # Tentukan tense berdasarkan tense rules
     sentence_tense = match_tense_rule(corrected_tags, words)
+    #print("Detected tense:", sentence_tense)
 
     # Analisis elemen kalimat
     elements = {key: [] for key in [
@@ -156,225 +299,89 @@ def analyze_sentence(sentence, model):
         "sentence_tense": sentence_tense
     }
 
-def extract_subject_predicate_object(tags, words):
-    """Extract subject, predicate, and object with phrase support."""
-    subject, predicate, obj = [], [], []
-    
-    # Find the main verb position
-    verb_indices = [i for i, tag in enumerate(tags) if tag in ['Verb', 'Verb_past', 'Verb_ing']]
-    aux_indices = [i for i, tag in enumerate(tags) if tag == 'Auxiliary_verb']
-    
-    if not verb_indices and not aux_indices:
-        return {
-            "subject": [],
-            "predicate": [],
-            "object": [],
-            "auxiliary_verbs": [],
-            "adverbs": [],
-            "determiners": [],
-            "adjectives": [],
-            "possessive_adjectives": [],
-            "possessive_pronouns": [],
-            "conjunctions": [],
-            "prepositions": []
-        }
-    
-    # Get the position of the first verb (main verb or auxiliary)
-    verb_pos = min(verb_indices) if verb_indices else min(aux_indices)
-    
-    # Define tags that can be part of subject phrase
-    subject_tags = [
-        'Pronoun_Subject', 
-        'Noun', 
-        'Noun_plural', 
-        'Determiner', 
-        'Adjective', 
-        'Possessive_adjective'
-    ]
-    
-    # Extract subject phrases
-    i = 0
-    while i < verb_pos:
-        if tags[i] in subject_tags:
-            phrase, last_idx = build_phrase(words, tags, i, subject_tags)
-            if phrase:
-                subject.append(phrase)
-            i = last_idx + 1
-        else:
-            i += 1
-    
-    # The verb and any auxiliary verbs are predicate
-    predicate = [words[i] for i in aux_indices] if aux_indices else []
-    if verb_indices:
-        predicate.append(words[verb_indices[0]])
-    
-    # Define tags that can be part of object phrase
-    object_tags = [
-        'Noun', 
-        'Noun_plural', 
-        'Pronoun_object', 
-        'Determiner', 
-        'Adjective',
-        'Preposition'
-    ]
-    
-    # Extract object phrases
-    i = verb_pos + 1
-    while i < len(words):
-        if tags[i] in object_tags:
-            phrase, last_idx = build_phrase(words, tags, i, object_tags)
-            if phrase:
-                obj.append(phrase)
-            i = last_idx + 1
-        else:
-            i += 1
-    
-    # Collect other elements
-    auxiliary_verbs = [words[i] for i in range(len(words)) if tags[i] == 'Auxiliary_verb']
-    adverbs = [words[i] for i in range(len(words)) if tags[i] == 'Adverb']
-    determiners = [words[i] for i in range(len(words)) if tags[i] == 'Determiner']
-    adjectives = [words[i] for i in range(len(words)) if tags[i] == 'Adjective']
-    possessive_adjectives = [words[i] for i in range(len(words)) if tags[i] == 'Possessive_adjective']
-    possessive_pronouns = [words[i] for i in range(len(words)) if tags[i] == 'Possessive_pronoun']
-    conjunctions = [words[i] for i in range(len(words)) if tags[i] == 'Conjunction']
-    prepositions = [words[i] for i in range(len(words)) if tags[i] == 'Preposition']
-    
-    return {
-        "subject": subject,
-        "predicate": predicate,
-        "object": obj,
-        "auxiliary_verbs": auxiliary_verbs,
-        "adverbs": adverbs,
-        "determiners": determiners,
-        "adjectives": adjectives,
-        "possessive_adjectives": possessive_adjectives,
-        "possessive_pronouns": possessive_pronouns,
-        "conjunctions": conjunctions,
-        "prepositions": prepositions
-    }
 
 def match_tense_rule(tags, words):
-    """
-    Match the sentence to a tense rule based on word tags and patterns.
-    Handles interrogative, negative, and positive sentences with more precise checks.
-    """
-    # Get indices of different verb types and auxiliaries
-    verb_indices = [i for i, tag in enumerate(tags) if tag == 'Verb']
-    verb_past_indices = [i for i, tag in enumerate(tags) if tag == 'Verb_past']
-    verb_ing_indices = [i for i, tag in enumerate(tags) if tag == 'Verb_ing']
-    aux_verb_indices = [i for i, tag in enumerate(tags) if tag == 'Auxiliary_verb']
-    negation_indices = [i for i, tag in enumerate(tags) if tag == 'Negation']
-
-    # Check if sentence is negative
-    is_negative = len(negation_indices) > 0
+    """Match the sentence to a tense rule based on word tags."""
+    # Convert words to lowercase for easier matching
+    words = [word.lower() for word in words]
     
-    # Get sentence type
-    sentence_type = detect_sentence_type(' '.join(words))
-    
-    # Handle interrogative sentences
-    if sentence_type == 'interrogative':
-        if aux_verb_indices:
-            aux_verb = words[aux_verb_indices[0]].lower()
-            # Present tense interrogatives
-            if aux_verb in ['do', 'does']:
-                if is_negative:
-                    return 'simple_present_negative_interrogative'
-                return 'simple_present_interrogative'
-            # Past tense interrogatives
-            elif aux_verb == 'did':
-                if is_negative:
-                    return 'simple_past_negative_interrogative'
-                return 'simple_past_interrogative'
-            # Present continuous interrogatives
-            elif aux_verb in ['is', 'are', 'am'] and verb_ing_indices:
-                if is_negative:
-                    return 'present_continuous_negative_interrogative'
-                return 'present_continuous_interrogative'
-            # Past continuous interrogatives
-            elif aux_verb in ['was', 'were'] and verb_ing_indices:
-                if is_negative:
-                    return 'past_continuous_negative_interrogative'
-                return 'past_continuous_interrogative'
-        return 'unknown_interrogative'
+    # Helper function to check if any auxiliary verb is in the sentence
+    def contains_any(word_list):
+        return any(aux in words for aux in word_list)
 
-    # Handle declarative sentences
-    # First, check for continuous tenses
-    if aux_verb_indices and verb_ing_indices:
-        aux_verb = words[aux_verb_indices[0]].lower()
-        # Present continuous
-        if aux_verb in ['am', 'is', 'are']:
-            if is_negative:
-                return 'present_continuous_negative'
-            return 'present_continuous'
-        # Past continuous
-        elif aux_verb in ['was', 'were']:
-            if is_negative:
-                return 'past_continuous_negative'
-            return 'past_continuous'
+    # Define auxiliary verbs with variations (positive and negative)
+    will_variants = ["will", "won't", "will not", "wont", "will be not"]
+    shall_variants = ["shall", "shan't", "shall not", "shant"]
+    has_variants = ["has", "hasn't", "has not", "hasnt"]
+    have_variants = ["have", "haven't", "have not", "havent"]
+    do_variants = ["do", "don't", "do not", "dont"]
+    does_variants = ["does", "doesn't", "does not", "doesnt"]
+    did_variants = ["did", "didn't", "did not", "didnt"]
+    had_variants = ["had", "hadn't", "had not", "hadnt"]
+    is_variants = ["is", "isn't", "is not", "isnt"]
+    are_variants = ["are", "aren't", "are not", "arent"]
+    was_variants = ["was", "wasn't", "was not", "wasnt"]
+    were_variants = ["were", "weren't", "were not", "werent"]
+    am_variants = ["am", "am not"]
 
-    # Check for simple past
-    if verb_past_indices:
-        if aux_verb_indices and is_negative:
-            return 'simple_past_negative'
+    Verb_ing = 'Verb_ing'
+    Verb_past = 'Verb_past'
+    Verb = 'Verb'
+
+     # PAST TENSE
+    if contains_any(was_variants) or contains_any(were_variants):
+        for word, tag in zip(words, tags):
+            if tag == 'Verb_ing':  # Check for Verb_ing tag
+                return 'past_continuous'
         return 'simple_past'
 
-    # Check for simple present
-    if verb_indices:
-        main_verb = words[verb_indices[0]].lower()
-        verb_pos = verb_indices[0]
+    if contains_any(had_variants):
+        for word, tag in zip(words, tags):
+            if 'been' in words and tag == 'Verb_ing':  # Check for Verb_ing tag
+                return 'past_perfect_continuous'
+        return 'past_perfect'
 
-        # Find subject type before the verb
-        subject_info = get_subject_type(tags[:verb_pos], words[:verb_pos])
-        
-        # Handle simple present based on subject type
-        if subject_info['found']:
-            if subject_info['is_plural']:
-                # Plural subjects (I, you, they, we) use base form
-                if not main_verb.endswith(('s', 'es')) or main_verb in ['was', 'has', 'does']:
-                    if is_negative:
-                        return 'simple_present_negative'
-                    return 'simple_present'
-            else:
-                # Singular subjects (he, she, it) use s/es form
-                if main_verb.endswith(('s', 'es')) and main_verb not in ['was', 'has', 'does']:
-                    if is_negative:
-                        return 'simple_present_negative'
-                    return 'simple_present'
+    if contains_any(did_variants):
+        return 'simple_past'
+
+    for word, tag in zip(words, tags):
+        if tag == 'Verb_past':  # Check for Verb_past tag
+            return 'simple_past'
+
+    # FUTURE TENSE
+    if contains_any(will_variants) or contains_any(shall_variants):
+        if contains_any(have_variants):
+            if 'been' in words:
+                for word, tag in zip(words, tags):
+                    if tag == 'Verb_ing':  # Check for Verb_ing tag
+                        return 'future_perfect_continuous'
+            return 'future_perfect'
+        for word, tag in zip(words, tags):
+            if 'be' in words and tag == 'Verb_ing':  # Check for Verb_ing tag
+                return 'future_continuous'
+        return 'simple_future'
+
+    # PRESENT TENSE
+    if contains_any(is_variants) or contains_any(are_variants) or contains_any(am_variants):
+        for word, tag in zip(words, tags):
+            if tag == 'Verb_ing':  # Check for Verb_ing tag
+                return 'present_continuous'
+        return 'simple_present'
+
+    if contains_any(do_variants) or contains_any(does_variants):
+        return 'simple_present'
+
+    if len(words) >= 2 and words[0].lower() in ['she', 'he', 'it'] and words[1].endswith('s') and words[1] not in ['has', 'does']:
+        return 'simple_present'
+
+    if contains_any(has_variants) or contains_any(have_variants):
+        if 'been' in words:
+            for word, tag in zip(words, tags):
+                if tag == 'Verb_ing':  # Check for Verb_ing tag
+                    return 'present_perfect_continuous'
+        return 'present_perfect'
 
     return 'unknown'
-
-def get_subject_type(tags, words):
-    """
-    Helper function to determine subject type (plural/singular).
-    Returns dict with 'found' boolean and 'is_plural' boolean.
-    """
-    result = {'found': False, 'is_plural': False}
-    
-    # Check for pronouns first
-    for i, tag in enumerate(tags):
-        if tag == 'Pronoun_Subject':
-            word = words[i].lower()
-            result['found'] = True
-            if word in ['i', 'you', 'they', 'we']:
-                result['is_plural'] = True
-            return result
-    
-    # Check for nouns and noun phrases
-    noun_indices = [i for i, tag in enumerate(tags) 
-                   if tag in ['Noun', 'Noun_plural']]
-    
-    if noun_indices:
-        result['found'] = True
-        last_noun_index = noun_indices[-1]
-        # Check if the last noun is plural
-        if tags[last_noun_index] == 'Noun_plural':
-            result['is_plural'] = True
-        
-        # Check for coordinating conjunctions joining multiple subjects
-        if 'Conjunction' in tags:
-            result['is_plural'] = True
-    
-    return result
 
 
 def build_phrase(words, tags, start_idx, valid_tags):
@@ -397,8 +404,8 @@ def read_sentences_from_file(file_path):
         return []
 
 def main():
-    dataset_path = "C:\\Users\\rahel\\OneDrive\\Dokumen\\unud\\Semester 3 - Informatika\\Teori Bahasa Dan Otomata\\code-ing\\fp-tbo\\dataset2.csv"
-    sentences_file_path = "C:\\Users\\rahel\\OneDrive\\Dokumen\\unud\\Semester 3 - Informatika\\Teori Bahasa Dan Otomata\\code-ing\\fp-tbo\\dataKalimat.txt"
+    dataset_path = "C:\\Users\\rahel\\OneDrive\\Dokumen\\unud\\Semester 3 - Informatika\\Teori Bahasa Dan Otomata\\code-ing\\fp-tbo\\parsing-code\\dataset2.csv"
+    sentences_file_path = "C:\\Users\\rahel\\OneDrive\\Dokumen\\unud\\Semester 3 - Informatika\\Teori Bahasa Dan Otomata\code-ing\\fp-tbo\\parsing-code\\dataKalimat.txt"
     
     # Load dataset dan train model
     try:
