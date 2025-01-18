@@ -411,8 +411,8 @@ def read_sentences_from_file(file_path):
         return []
 
 def main():
-    dataset_path = "C:\\Users\\rahel\\OneDrive\\Dokumen\\unud\\Semester 3 - Informatika\\Teori Bahasa Dan Otomata\\code-ing\\fp-tbo\\parsing-code\\dataset2.csv"
-    sentences_file_path = "C:\\Users\\rahel\\OneDrive\\Dokumen\\unud\\Semester 3 - Informatika\\Teori Bahasa Dan Otomata\code-ing\\fp-tbo\\parsing-code\\dataKalimat.txt"
+    dataset_path = "dataset2.csv"
+    sentences_file_path = "dataKalimat.txt"
     
     try:
         data = load_data_from_csv(dataset_path)
