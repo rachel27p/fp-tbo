@@ -4,8 +4,7 @@ from sklearn.model_selection import train_test_split
 
 def load_data_from_csv(file_path):
     """
-    Load dataset from a CSV file and format it into a list of sentences.
-    Each sentence is a list of (word, tag) tuples.
+    Load dataset from a CSV file.
     """
     data = []
     try:
@@ -13,9 +12,9 @@ def load_data_from_csv(file_path):
         for _, group in df.groupby('sentence_id'):
             words = list(group['word'])
             tags = list(group['tag'])
-            # Check consistency between words and tags
+           
             if len(words) != len(tags):
-                raise ValueError(f"Inconsistent word-tag pairs in sentence_id {_}")
+                raise ValueError(f"Jumlah word dan tag tidak sama pada sentence_id {_}")
             sentence = list(zip(words, tags))
             data.append(sentence)
     except Exception as e:
@@ -24,7 +23,6 @@ def load_data_from_csv(file_path):
 
 
 def word2features(sentence, i):
-    """Extract features for a given word in a sentence."""
     word = sentence[i][0]
     features = {
         'word.lower()': word.lower(),
@@ -33,8 +31,8 @@ def word2features(sentence, i):
         'word.isupper()': word.isupper(),
         'word.istitle()': word.istitle(),
         'word.isdigit()': word.isdigit(),
-        'BOS': i == 0,  # Beginning of sentence
-        'EOS': i == len(sentence) - 1,  # End of sentence
+        'BOS': i == 0, 
+        'EOS': i == len(sentence) - 1,  
     }
     if i > 0:
         prev_word = sentence[i - 1][0]
@@ -59,17 +57,17 @@ def word2features(sentence, i):
     return features
 
 def sent2features(sentence):
-    """Convert a sentence into a list of feature dictionaries."""
+    
     features = [word2features(sentence, i) for i in range(len(sentence))]
     return features
 
 def sent2labels(sentence):
-    """Extract labels (tags) from a sentence."""
+    
     labels = [label for _, label in sentence]
     return labels
 
 def detect_sentence_type(sentence):
-    """Deteksi jenis kalimat berdasarkan tanda baca atau struktur."""
+   
     sentence = sentence.strip()
     if sentence.endswith("?"):
         return "interrogative"
@@ -79,10 +77,10 @@ def detect_sentence_type(sentence):
         return "declarative"
 
 def extract_subject_predicate_object(tags, words):
-    """Extract subject, predicate, and object with support for interrogative sentences."""
+    
     subject, predicate, obj = [], [], []
     
-    # Initialize other elements
+   
     auxiliary_verbs = []
     adverbs = []
     determiners = []
@@ -92,10 +90,10 @@ def extract_subject_predicate_object(tags, words):
     conjunctions = []
     prepositions = []
     
-    # Detect if it's a question
+    
     is_question = words[-1].endswith('?') or words[0].lower() in ['what', 'where', 'when', 'who', 'why', 'how', 'do', 'does', 'did', 'is', 'are', 'was', 'were']
     
-    # Find all verb positions
+    
     verb_indices = [i for i, tag in enumerate(tags) if tag in ['Verb', 'Verb_past', 'Verb_ing', 'verb_past_participle']]
     aux_indices = [i for i, tag in enumerate(tags) if tag == 'Auxiliary_verb']
     
@@ -114,7 +112,6 @@ def extract_subject_predicate_object(tags, words):
             "prepositions": []
         }
     
-    # Define tags that can be part of subject phrase
     subject_tags = [
         'Pronoun_Subject', 
         'Noun', 
@@ -125,12 +122,12 @@ def extract_subject_predicate_object(tags, words):
     ]
     
     if is_question:
-        # For questions, look for subject after auxiliary verb or WH-word
-        start_idx = 1  # Skip the first word if it's a question word
+        
+        start_idx = 1  
         if aux_indices:
             start_idx = aux_indices[0] + 1
             
-        # Extract subject from position after auxiliary/question word
+        
         i = start_idx
         while i < len(words):
             if tags[i] in subject_tags:
@@ -140,7 +137,7 @@ def extract_subject_predicate_object(tags, words):
                     break
             i += 1
     else:
-        # Original logic for declarative sentences
+        
         i = 0
         verb_pos = min(verb_indices) if verb_indices else min(aux_indices)
         while i < verb_pos:
@@ -152,12 +149,12 @@ def extract_subject_predicate_object(tags, words):
             else:
                 i += 1
     
-    # Extract predicate (verbs and auxiliary verbs)
+   
     predicate = [words[i] for i in aux_indices] if aux_indices else []
     if verb_indices:
         predicate.append(words[verb_indices[0]])
     
-    # Define object tags
+    
     object_tags = [
         'Noun', 
         'Noun_plural', 
@@ -168,7 +165,7 @@ def extract_subject_predicate_object(tags, words):
         'Adverb'
     ]
     
-    # Extract object (after verb/auxiliary)
+    
     last_verb_pos = max(verb_indices) if verb_indices else max(aux_indices)
     i = last_verb_pos + 1
     while i < len(words):
@@ -180,7 +177,7 @@ def extract_subject_predicate_object(tags, words):
         else:
             i += 1
     
-    # Collect other elements
+    
     for i, (word, tag) in enumerate(zip(words, tags)):
         if tag == 'Auxiliary_verb': auxiliary_verbs.append(word)
         elif tag == 'Adverb': adverbs.append(word)
@@ -208,11 +205,11 @@ def extract_subject_predicate_object(tags, words):
 
 def analyze_sentence(sentence, model):
     """Analyze a given sentence and detect its tense and structure."""
-    # Tokenize kalimat
+   
     words = sentence.rstrip('.').split()
     print("Words:", words)
 
-    # Tokenize dan prediksi dengan CRF model
+    
     features = []
     for i, word in enumerate(words):
         word_features = {
@@ -226,7 +223,7 @@ def analyze_sentence(sentence, model):
             'EOS': i == len(words) - 1,
         }
         
-        # Tambah fitur kata sebelumnya
+        
         if i > 0:
             prev_word = words[i - 1]
             word_features.update({
@@ -237,7 +234,7 @@ def analyze_sentence(sentence, model):
         else:
             word_features['BOS'] = True
             
-        # Tambah fitur kata setelahnya
+       
         if i < len(words) - 1:
             next_word = words[i + 1]
             word_features.update({
@@ -256,15 +253,15 @@ def analyze_sentence(sentence, model):
     except Exception as e:
         raise ValueError(f"Error during prediction: {e}")
 
-    # Koreksi tag prediksi jika diperlukan
+   
     corrected_tags = []
     for i, (word, tag) in enumerate(zip(words, tags)):
-        # Cek apakah kata sebelumnya adalah subjek
+        
         is_after_subject = (i > 0 and corrected_tags[i-1] == 'Pronoun_Subject')
         
         if word.lower() in ['is', 'are', 'was', 'were', 'have', 'has', 'am', 'do','does', 'had', 'will', 'been', 'shall', 'be', 'did']:
             corrected_tags.append('Auxiliary_verb')
-        # Jika kata setelah subjek dan berakhiran 's'
+        
         elif (is_after_subject and 
             word.endswith('s') and 
             not word.lower() in ['is', 'was', 'has']):
@@ -273,11 +270,10 @@ def analyze_sentence(sentence, model):
             corrected_tags.append(tag)
 
 
-    # Tentukan tense berdasarkan tense rules
+    
     sentence_tense = match_tense_rule(corrected_tags, words)
-    #print("Detected tense:", sentence_tense)
 
-    # Analisis elemen kalimat
+    
     elements = {key: [] for key in [
         "Pronoun_Subject", "Pronoun_object", "Possessive_adjective", "Possessive_pronoun",
         "Verb", "Verb_ing", "Verb_past_participle", "Verb_past", "Auxiliary_verb",
@@ -301,15 +297,14 @@ def analyze_sentence(sentence, model):
 
 
 def match_tense_rule(tags, words):
-    """Match the sentence to a tense rule based on word tags."""
-    # Convert words to lowercase for easier matching
+   
+    
     words = [word.lower() for word in words]
     
-    # Helper function to check if any auxiliary verb is in the sentence
     def contains_any(word_list):
         return any(aux in words for aux in word_list)
 
-    # Define auxiliary verbs with variations (positive and negative)
+    
     will_variants = ["will", "won't", "will not", "wont", "will be not"]
     shall_variants = ["shall", "shan't", "shall not", "shant"]
     has_variants = ["has", "hasn't", "has not", "hasnt"]
@@ -332,24 +327,24 @@ def match_tense_rule(tags, words):
      # PAST TENSE
     if contains_any(was_variants) or contains_any(were_variants):
         for word, tag in zip(words, tags):
-            if tag == 'Verb_ing':  # Check for Verb_ing tag
+            if tag == 'Verb_ing': 
                 return 'past_continuous'
 
 
     if contains_any(had_variants):
         for word, tag in zip(words, tags):
-            if 'been' in words and tag == 'Verb_ing':  # Check for Verb_ing tag
+            if 'been' in words and tag == 'Verb_ing':  
                 return 'past_perfect_continuous'
             if tag == 'Verb_past_participle':
                 return 'past_perfect'
 
     if contains_any(did_variants):
         for word, tag in zip(words, tags):
-            if tag == 'Verb' and not contains_any(do_variants) and not contains_any(does_variants):  # Check for Verb_past tag
+            if tag == 'Verb' and not contains_any(do_variants) and not contains_any(does_variants): 
                 return 'simple_past'
 
     for word, tag in zip(words, tags):
-        if tag == 'Verb_past' and not contains_any(do_variants) and not contains_any(does_variants):  # Check for Verb_past tag
+        if tag == 'Verb_past' and not contains_any(do_variants) and not contains_any(does_variants):  
             return 'simple_past'
 
     # FUTURE TENSE
@@ -357,32 +352,37 @@ def match_tense_rule(tags, words):
         if contains_any(have_variants):
             for word, tag in zip(words, tags):
                 if 'been' in words:
-                        if tag == 'Verb_ing':  # Check for Verb_ing tag
+                        if tag == 'Verb_ing':  
                             return 'future_perfect_continuous'
                 if tag == 'Verb_past_participle':
                     return 'future_perfect'
             
         for word, tag in zip(words, tags):
-            if 'be' in words and tag == 'Verb_ing':  # Check for Verb_ing tag
+            if 'be' in words and tag == 'Verb_ing':  
                 return 'future_continuous'
         return 'simple_future'
 
     # PRESENT TENSE
     if contains_any(is_variants) or contains_any(are_variants) or contains_any(am_variants):
         for word, tag in zip(words, tags):
-            if tag == 'Verb_ing':  # Check for Verb_ing tag
+            if tag == 'Verb_ing':  
                 return 'present_continuous'
 
     if contains_any(do_variants) or contains_any(does_variants):
         return 'simple_present'
 
-    if len(words) >= 2 and words[0].lower() in ['she', 'he', 'it'] and words[1].endswith['s', 'es'] and words[1] not in ['has', 'does']:
+    if len(words) >= 2 and words[0].lower() in ['she', 'he', 'it'] and words[1].endswith(('s', 'es')) and words[1] not in ['has', 'does']:
         return 'simple_present'
+
+    if len(words) >= 2 and words[0].lower() in ['i', 'you', 'they', 'we']:
+        for word, tag in zip(words, tags):
+            if tag == 'Verb' and not word.endswith(('s', 'es')):  
+                return 'simple_present'
 
     if contains_any(has_variants) or contains_any(have_variants):
         for word, tag in zip(words, tags):
             if 'been' in words:
-                    if tag == 'Verb_ing':  # Check for Verb_ing tag
+                    if tag == 'Verb_ing':  
                         return 'present_perfect_continuous'
                     
             if tag == 'Verb_past_participle':
@@ -392,7 +392,7 @@ def match_tense_rule(tags, words):
 
 
 def build_phrase(words, tags, start_idx, valid_tags):
-    """Build a phrase starting from given index using valid tags."""
+    
     phrase = []
     i = start_idx
     while i < len(tags) and tags[i] in valid_tags:
@@ -402,7 +402,7 @@ def build_phrase(words, tags, start_idx, valid_tags):
 
 
 def read_sentences_from_file(file_path):
-    """Membaca kalimat dari file teks"""
+   
     try:
         with open(file_path, 'r') as file:
             return [line.strip() for line in file if line.strip()]
@@ -414,7 +414,6 @@ def main():
     dataset_path = "C:\\Users\\rahel\\OneDrive\\Dokumen\\unud\\Semester 3 - Informatika\\Teori Bahasa Dan Otomata\\code-ing\\fp-tbo\\parsing-code\\dataset2.csv"
     sentences_file_path = "C:\\Users\\rahel\\OneDrive\\Dokumen\\unud\\Semester 3 - Informatika\\Teori Bahasa Dan Otomata\code-ing\\fp-tbo\\parsing-code\\dataKalimat.txt"
     
-    # Load dataset dan train model
     try:
         data = load_data_from_csv(dataset_path)
         if not data:
@@ -423,14 +422,12 @@ def main():
         print(e)
         exit()
 
-    # Split data dan train model
     train_data, test_data = train_test_split(data, test_size=0.2, random_state=100)
     X_train = [sent2features(sentence) for sentence in train_data]
     y_train = [sent2labels(sentence) for sentence in train_data]
     X_test = [sent2features(sentence) for sentence in test_data]
     y_test = [sent2labels(sentence) for sentence in test_data]
 
-    # Train CRF model
     crf = CRF(
         algorithm='lbfgs',
         c1=0.1,
@@ -447,13 +444,11 @@ def main():
         print(f"Error training CRF model: {e}")
         exit()
 
-    # Evaluasi model
     y_pred = crf.predict(X_test)
     print("\nModel Accuracy:", metrics.flat_accuracy_score(y_test, y_pred))
     print("\nClassification Report:")
     print(metrics.flat_classification_report(y_test, y_pred, labels=crf.classes_, zero_division=0))
 
-    # Loop untuk input kalimat dinamis
     while True:
         print("\n" + "="*50)
         print("Sentence Analyzer")
